@@ -377,86 +377,22 @@
       const ang = Math.random() * Math.PI * 2;
       const spd = (Math.random() * 7 + 2.2) * power;
       game.particles.push({
-        x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
-        life: 1, color, size: Math.random() * 8 + 4,
-        spin: (Math.random() - 0.5) * 0.4, rot: Math.random() * Math.PI * 2,
+        x, y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        life: 1,
+        color,
+        size: Math.random() * 8 + 4,
+        spin: (Math.random() - 0.5) * 0.4,
+        rot: Math.random() * Math.PI * 2,
         friction: 0.92 + Math.random() * 0.05
       });
     }
-    game.shock = Math.min(40, Math.max(game.shock, 10 + power * 16));
-    game.flash = Math.max(game.flash, 0.12 * power);
+    game.shock = Math.min(18, game.shock + 5 * power);
+    game.flash = Math.max(game.flash, 0.1 * power);
     game.flashColor = color;
-    game.hitStopTimer = Math.max(game.hitStopTimer, power >= 1.6 ? 0.045 : power >= 1.1 ? 0.025 : 0.012);
     if (power >= 1.1) {
       playSound(60 + Math.random() * 40, 'sawtooth', 0.18 + power * 0.04, 0.06 + Math.min(0.06, power * 0.02), 0.45);
-    }
-  }
-
-  function collapseEnemyAt(index, visited, depth = 0) {
-    if (index < 0 || index >= game.enemies.length) return 0;
-    const e = game.enemies[index];
-    if (!e || visited.has(e.id)) return 0;
-    visited.add(e.id);
-
-    const giant = e.kind === 'brute';
-    const ex = e.x, ey = e.y, ec = e.color;
-    spawnExplosion(ex, ey, ec, giant ? 26 : 18, giant ? 1.1 : 0.85);
-    spawnLightBurst(ex, ey, ec, giant ? 3 : 2);
-    showFloatingText(ex, ey, depth === 0 ? 'DECAY' : 'CHAIN', '#ffffff', giant ? 0.9 : 0.75);
-
-    let chainCount = 1;
-    if (giant) {
-      e.hp -= 1;
-      e.hitFlash = 1;
-      e.scaleJolt = 1.18;
-      if (e.hp > 0) return chainCount;
-    }
-
-    const nextTargets = [];
-    if (depth < 3) {
-      const radius = 84 - depth * 10;
-      for (let i = game.enemies.length - 1; i >= 0; i--) {
-        const n = game.enemies[i];
-        if (!n || n.id === e.id || visited.has(n.id)) continue;
-        if (Math.hypot(n.x - ex, n.y - ey) <= radius) {
-          nextTargets.push(n.id);
-        }
-      }
-    }
-
-    game.enemies.splice(index, 1);
-    addScore(Math.round(e.scoreBase * (depth === 0 ? 0.38 : 0.3)), ex, ey, '#ffffff');
-    game.energy = Math.min(MAX_ENERGY, game.energy + (depth === 0 ? 2 : 1));
-    game.combo += 1;
-    game.comboTimer = Math.max(game.comboTimer, 1.2);
-    playKillSound(false, giant, game.combo);
-
-    if (depth >= 3) return chainCount;
-    for (const targetId of nextTargets) {
-      const targetIndex = game.enemies.findIndex(enemy => enemy && enemy.id === targetId);
-      if (targetIndex >= 0) {
-        chainCount += collapseEnemyAt(targetIndex, visited, depth + 1);
-        if (chainCount >= 10) break;
-      }
-    }
-    return chainCount;
-  }
-
-  function triggerQuantumDecay(x, y, sourceId = '') {
-    const visited = new Set(sourceId ? [sourceId] : []);
-    let chain = 0;
-    for (let i = game.enemies.length - 1; i >= 0; i--) {
-      const e = game.enemies[i];
-      if (!e || visited.has(e.id)) continue;
-      if (Math.hypot(e.x - x, e.y - y) <= 82) {
-        chain += collapseEnemyAt(i, visited, 1);
-        if (chain >= 10) break;
-      }
-    }
-    if (chain >= 2) {
-      showToast('QUANTUM DECAY', '#ffffff');
-      triggerHitStop(0.04);
-      triggerZoomPunch(0.018);
     }
   }
 
@@ -1540,12 +1476,7 @@
       ctx.restore();
     }
 
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
     for (const e of game.enemies) drawEnemy(e);
-    ctx.restore();
 
     for (const b of game.enemyBullets) {
       ctx.save();
@@ -1564,7 +1495,6 @@
     }
 
     if (game.boss) drawBoss(game.boss);
-    ctx.restore();
 
     for (const p of game.particles) {
       ctx.globalAlpha = Math.max(0, p.life);
@@ -1671,7 +1601,6 @@
   function onPointerDown(e) {
     if (game.state !== 'play') return;
     if (e.pointerType === 'touch') return;
-    e.preventDefault();
     startFireInput();
     game.activePointerId = e.pointerId;
     canvas.setPointerCapture?.(e.pointerId);
