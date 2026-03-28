@@ -421,6 +421,36 @@
     game.zoomPunch = Math.max(game.zoomPunch, strength);
   }
 
+  function triggerQuantumDecay(x, y, sourceId = '') {
+    const visited = new Set(sourceId ? [sourceId] : []);
+    let chain = 0;
+    for (let i = game.enemies.length - 1; i >= 0; i--) {
+      const e = game.enemies[i];
+      if (!e || visited.has(e.id)) continue;
+      if (Math.hypot(e.x - x, e.y - y) <= 82) {
+        visited.add(e.id);
+        e.hitFlash = 1;
+        e.scaleJolt = 1.15;
+        spawnExplosion(e.x, e.y, e.color, 14, 0.7);
+        spawnLightBurst(e.x, e.y, e.color, 2);
+        showFloatingText(e.x, e.y, 'CHAIN', '#ffffff', 0.75);
+        addScore(Math.round(e.scoreBase * 0.3), e.x, e.y, '#ffffff');
+        game.combo += 1;
+        game.comboTimer = Math.max(game.comboTimer, 1.2);
+        game.energy = Math.min(MAX_ENERGY, game.energy + 1);
+        game.enemies.splice(i, 1);
+        chain++;
+        if (chain >= 6) break;
+      }
+    }
+    if (chain >= 2) {
+      showToast('QUANTUM DECAY', '#ffffff');
+      triggerHitStop(0.04);
+      triggerZoomPunch(0.018);
+    }
+  }
+
+
   function createEnemy(lane = null, yOffset = null, forcedKind = null) {
     const tierRoll = Math.random();
     let kind = forcedKind || 'round';
