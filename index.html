@@ -15,9 +15,9 @@
     --orange:#ff9b00;
     --red:#ff445e;
   }
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;}
-  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:radial-gradient(circle at 50% 50%, #150025 0%, #030308 45%, #000000 100%);font-family:'Orbitron',sans-serif;color:var(--text);touch-action:none;}
-  #app{position:fixed;inset:0;overflow:hidden;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:radial-gradient(circle at 50% 50%, #150025 0%, #030308 45%, #000000 100%);font-family:'Orbitron',sans-serif;color:var(--text);touch-action:none;overscroll-behavior:none;-webkit-text-size-adjust:100%;}
+  #app{position:fixed;inset:0;overflow:hidden;touch-action:none;}
   canvas{position:absolute;inset:0;width:100%;height:100%;display:block;filter:contrast(1.18) saturate(1.45) brightness(1.03);}
   .hud{position:absolute;left:12px;right:12px;top:calc(12px + env(safe-area-inset-top));display:flex;justify-content:space-between;gap:10px;pointer-events:none;z-index:5;}
   .card{min-width:0;flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-left:4px solid var(--cyan);backdrop-filter:blur(18px);padding:10px 14px;box-shadow:0 0 28px rgba(0,255,255,0.16);border-radius:16px;}
@@ -1746,10 +1746,18 @@
       setPhase(phase);
     };
     btn.addEventListener('pointerdown', handler, { passive: false });
+    btn.addEventListener('touchstart', handler, { passive: false });
+    btn.addEventListener('mousedown', handler, { passive: false });
     btn.addEventListener('click', handler);
   }
   wireColorButton(blueBtn, 0);
   wireColorButton(pinkBtn, 1);
+
+  document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+  document.addEventListener('selectstart', (e) => e.preventDefault());
+  window.addEventListener('touchmove', (e) => {
+    if (game && game.state === 'play' && (game.pointerDown || game.fireTouchActive)) e.preventDefault();
+  }, { passive: false });
 
   startBtn.addEventListener('click', () => {
     getAudioCtx();
