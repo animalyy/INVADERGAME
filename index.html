@@ -107,14 +107,33 @@
     [100, 'SS'],
   ];
 
-  let highScore = parseInt(localStorage.getItem('qs_hi') || '0', 10);
+  function safeGetLocal(key, fallback = '') {
+    try {
+      const v = window.localStorage.getItem(key);
+      return v == null ? fallback : v;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function safeSetLocal(key, value) {
+    try {
+      window.localStorage.setItem(key, value);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  let highScore = parseInt(safeGetLocal('qs_hi', '0') || '0', 10);
+  if (!Number.isFinite(highScore)) highScore = 0;
   let audioCtx = null;
   let w = 0, h = 0, dpr = Math.max(1, window.devicePixelRatio || 1);
 
   function saveHighScore() {
     if (game.score > highScore) {
       highScore = game.score;
-      localStorage.setItem('qs_hi', String(highScore));
+      safeSetLocal('qs_hi', String(highScore));
       if (!game.newRecordShown) {
         game.newRecord = true;
         game.newRecordShown = true;
@@ -307,6 +326,7 @@
     mainTitle.innerHTML = 'QUANTUM<br>SWARM';
     subTitle.textContent = `BEST ${highScore.toLocaleString()}`;
     leadText.innerHTML = '長押しで撃つ。下の青とピンクで色チェンジ。ダブルタップでドカン。<br>波を抜け、ボスを倒し、記録を更新する。';
+    startBtn.textContent = 'ENGAGE';
     titleScreen.style.display = 'none';
   }
 
@@ -382,6 +402,19 @@
       e.scaleJolt = 1.18;
       if (e.hp > 0) return chainCount;
     }
+
+    const nextTargets = [];
+    if (depth < 3) {
+      const radius = 84 - depth * 10;
+      for (let i = game.enemies.length - 1; i >= 0; i--) {
+        const n = game.enemies[i];
+        if (!n || n.id === e.id || visited.has(n.id)) continue;
+        if (Math.hypot(n.x - ex, n.y - ey) <= radius) {
+          nextTargets.push(n.id);
+        }
+      }
+    }
+
     game.enemies.splice(index, 1);
     addScore(Math.round(e.scoreBase * (depth === 0 ? 0.38 : 0.3)), ex, ey, '#ffffff');
     game.energy = Math.min(MAX_ENERGY, game.energy + (depth === 0 ? 2 : 1));
@@ -390,12 +423,10 @@
     playKillSound(false, giant, game.combo);
 
     if (depth >= 3) return chainCount;
-    const radius = 84 - depth * 10;
-    for (let i = game.enemies.length - 1; i >= 0; i--) {
-      const n = game.enemies[i];
-      if (!n || visited.has(n.id)) continue;
-      if (Math.hypot(n.x - ex, n.y - ey) <= radius) {
-        chainCount += collapseEnemyAt(i, visited, depth + 1);
+    for (const targetId of nextTargets) {
+      const targetIndex = game.enemies.findIndex(enemy => enemy && enemy.id === targetId);
+      if (targetIndex >= 0) {
+        chainCount += collapseEnemyAt(targetIndex, visited, depth + 1);
         if (chainCount >= 10) break;
       }
     }
@@ -501,14 +532,13 @@
 
   function lineCircleHit(x1, y1, x2, y2, cx, cy, cr) {
     const dx = x2 - x1, dy = y2 - y1;
-    const fx = x1 - cx, fy = y1 - cy;
-    const a = dx * dx + dy * dy;
-    const b = 2 * (fx * dx + fy * dy);
-    const c = fx * fx + fy * fy - cr * cr;
-    const disc = b * b - 4 * a * c;
-    if (disc < 0) return false;
-    const t = (-b - Math.sqrt(disc)) / (2 * a);
-    return t >= 0 && t <= 1;
+    const len2 = dx * dx + dy * dy;
+    if (len2 <= 0.0001) return Math.hypot(cx - x1, cy - y1) <= cr;
+    let t = ((cx - x1) * dx + (cy - y1) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const px = x1 + dx * t;
+    const py = y1 + dy * t;
+    return Math.hypot(cx - px, cy - py) <= cr;
   }
 
   function spawnBoss() {
@@ -1065,7 +1095,9 @@
     }
 
     updateBoss(dt);
+    if (game.state !== 'play') return;
     updateEnemyBullets(dt);
+    if (game.state !== 'play') return;
 
     for (let i = game.enemies.length - 1; i >= 0; i--) {
       const e = game.enemies[i];
@@ -1629,6 +1661,7 @@
     game.holdArmed = false;
     game.autoFire = 0;
     game.activePointerId = null;
+    game.lastTapAt = 0;
   }
 
   canvas.addEventListener('pointerdown', onPointerDown, { passive: true });
