@@ -286,7 +286,7 @@
       newRecordShown: false,
       newRecordFreeze: 0,
       newRecordFlash: 0,
-      spawnTimer: 0,
+      spawnTimer: 1.0,
       lockedTargetId: null,
       lockTimer: 0,
     };
@@ -319,6 +319,7 @@
 
   function resetGame() {
     game = makeGame();
+    game.state = 'play';
     updateBasePosition();
     initStars();
     updatePhaseText();
@@ -369,18 +370,24 @@
   }
 
   function spawnExplosion(x, y, color, count = 24, power = 1) {
-    for (let i = 0; i < count; i++) {
+    const amount = Math.round(count + power * 10);
+    for (let i = 0; i < amount; i++) {
       const ang = Math.random() * Math.PI * 2;
-      const spd = (Math.random() * 5 + 1.2) * power;
+      const spd = (Math.random() * 7 + 2.2) * power;
       game.particles.push({
         x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
-        life: 1, color, size: Math.random() * 8 + 2,
-        spin: (Math.random() - 0.5) * 0.4, rot: Math.random() * Math.PI * 2
+        life: 1, color, size: Math.random() * 8 + 4,
+        spin: (Math.random() - 0.5) * 0.4, rot: Math.random() * Math.PI * 2,
+        friction: 0.92 + Math.random() * 0.05
       });
     }
-    game.shock = Math.min(18, game.shock + 5 * power);
-    game.flash = Math.max(game.flash, 0.1 * power);
+    game.shock = Math.min(40, Math.max(game.shock, 10 + power * 16));
+    game.flash = Math.max(game.flash, 0.12 * power);
     game.flashColor = color;
+    game.hitStopTimer = Math.max(game.hitStopTimer, power >= 1.6 ? 0.045 : power >= 1.1 ? 0.025 : 0.012);
+    if (power >= 1.1) {
+      playSound(60 + Math.random() * 40, 'sawtooth', 0.18 + power * 0.04, 0.06 + Math.min(0.06, power * 0.02), 0.45);
+    }
   }
 
   function collapseEnemyAt(index, visited, depth = 0) {
@@ -462,9 +469,10 @@
     const waveMulti = 1 + (game.wave - 1) * 0.16;
     const comboMulti = 1 + Math.min(30, game.combo) * 0.22;
     const feverMulti = game.energy >= 100 ? 3 : 1;
-    const gain = Math.round(base * waveMulti * comboMulti * feverMulti);
+    const surgeBonus = Math.pow(Math.max(1, game.combo + 1), 1.2) * 70;
+    const gain = Math.round(base * waveMulti * comboMulti * feverMulti + surgeBonus);
     game.score += gain;
-    showFloatingText(x, y, `+${gain.toLocaleString()}`, color, 1 + Math.min(1.6, game.combo * 0.05));
+    showFloatingText(x, y, `+${gain.toLocaleString()}`, color, 1 + Math.min(1.7, game.combo * 0.05));
     return gain;
   }
 
@@ -1124,7 +1132,8 @@
               game.combo += giant ? 3 : 1;
               game.comboTimer = 2.2;
               addScore(e.scoreBase, deadX, deadY, e.color);
-              game.energy = Math.min(MAX_ENERGY, game.energy + (giant ? 20 : 9));
+              const energyGain = giant ? 20 : Math.min(18, 9 + game.combo * 0.05);
+              game.energy = Math.min(MAX_ENERGY, game.energy + energyGain);
               if (!game.boss && !giant) triggerQuantumDecay(deadX, deadY, deadId);
               if (game.combo > 0 && game.combo % 10 === 0) {
                 showToast(`${game.combo} COMBO!!`, '#ffea00');
@@ -1136,6 +1145,14 @@
                 triggerZoomPunch(0.028);
                 const praise = PRAISE_POOL[Math.floor(Math.random() * PRAISE_POOL.length)];
                 showFloatingText(e.x, e.y - 48, praise, '#b8ff00', 0.9);
+              }
+              if (game.combo > 0 && game.combo % 100 === 0) {
+                showToast(`${game.combo} COMBO!!`, '#ffea00');
+                game.shock = Math.max(game.shock, 34);
+                triggerHitStop(0.08);
+                triggerZoomPunch(0.04);
+                playSound(1200, 'sine', 0.35, 0.12, 0.88);
+                spawnLightBurst(deadX, deadY, '#ffea00', 16);
               }
               playKillSound(false, giant, game.combo);
             } else {
@@ -1164,8 +1181,9 @@
       p.x += p.vx;
       p.y += p.vy;
       p.life *= p.textMode ? 0.97 : 0.94;
-      p.vx *= 0.985;
-      p.vy = p.textMode ? p.vy : p.vy * 0.985 + 0.03;
+      const friction = p.friction || 0.985;
+      p.vx *= friction;
+      p.vy = p.textMode ? p.vy : p.vy * friction + 0.03;
       if (!p.textMode) p.rot += p.spin || 0;
       if (p.life < 0.05) game.particles.splice(i, 1);
     }
@@ -1398,8 +1416,8 @@
 
   function draw() {
     const abyss = game.score >= 1000000;
-    const bgAlpha = Math.max(0.08, 0.16 - game.energy / 1200);
-    ctx.fillStyle = abyss ? `rgba(0,5,16,${Math.min(0.22, bgAlpha + 0.03)})` : `rgba(0,0,0,${bgAlpha})`;
+    const bgAlpha = game.energy >= 100 ? 0.36 : Math.max(0.1, 0.22 - game.energy / 1400);
+    ctx.fillStyle = abyss ? `rgba(0,5,16,${Math.min(0.28, bgAlpha + 0.03)})` : `rgba(2,0,8,${bgAlpha})`;
     ctx.fillRect(0, 0, w, h);
 
     const zoom = game.screenZoom || 1;
@@ -1442,15 +1460,12 @@
       ctx.fillRect(0, 0, w, h);
     }
 
-    if (abyss && Math.random() < 0.01) {
-      const gy = Math.random() * h;
-      const gh = 2 + Math.random() * 8;
-      const gx = (Math.random() - 0.5) * 10;
+    if (abyss && Math.random() < 0.012) {
       ctx.save();
-      ctx.globalAlpha = 0.08 + Math.random() * 0.05;
-      ctx.drawImage(canvas, 0, Math.max(0, gy - gh), w, gh, gx, gy, w, gh);
-      ctx.fillStyle = 'rgba(130,220,255,0.09)';
-      ctx.fillRect(0, gy, w, gh * 0.6);
+      ctx.globalAlpha = 0.06 + Math.random() * 0.04;
+      ctx.fillStyle = 'rgba(130,220,255,1)';
+      const gy = Math.random() * h;
+      ctx.fillRect(0, gy, w, 2 + Math.random() * 6);
       ctx.restore();
     }
 
@@ -1523,6 +1538,8 @@
       ctx.restore();
     }
 
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
     for (const e of game.enemies) drawEnemy(e);
 
     for (const b of game.enemyBullets) {
@@ -1542,6 +1559,7 @@
     }
 
     if (game.boss) drawBoss(game.boss);
+    ctx.restore();
 
     for (const p of game.particles) {
       ctx.globalAlpha = Math.max(0, p.life);
@@ -1603,7 +1621,7 @@
       const vig = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.28, w / 2, h / 2, Math.max(w, h) * 0.82);
       const col = game.rank === 'SS' ? '255,220,0' : game.rank === 'S' ? '180,255,0' : '0,255,255';
       vig.addColorStop(0, `rgba(${col},0)`);
-      vig.addColorStop(1, `rgba(${col},${(game.vignette * 0.28).toFixed(3)})`);
+      vig.addColorStop(1, `rgba(${col},${(game.vignette * 0.34).toFixed(3)})`);
       ctx.fillStyle = vig;
       ctx.fillRect(0, 0, w, h);
     }
@@ -1657,6 +1675,7 @@
   }
 
   function cancelPointer() {
+    if (!game) return;
     game.pointerDown = false;
     game.holdArmed = false;
     game.autoFire = 0;
