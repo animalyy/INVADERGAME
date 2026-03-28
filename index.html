@@ -38,7 +38,7 @@
   .badge-blue{color:var(--cyan);box-shadow:0 0 20px rgba(0,255,255,.25)}
   .badge-pink{color:var(--magenta);box-shadow:0 0 20px rgba(255,0,255,.25)}
   .color-controls{position:absolute;left:12px;right:12px;bottom:calc(74px + env(safe-area-inset-bottom));display:flex;justify-content:space-between;gap:14px;z-index:7;pointer-events:none;}
-  .color-btn{pointer-events:auto;flex:1;max-width:180px;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.42);backdrop-filter:blur(12px);border-radius:20px;padding:14px 12px;font:900 16px/1 Orbitron,sans-serif;letter-spacing:.08em;color:#fff;box-shadow:0 0 18px rgba(255,255,255,.08);touch-action:manipulation;}
+  .color-btn{pointer-events:auto;flex:1;max-width:180px;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.42);backdrop-filter:blur(12px);border-radius:20px;padding:14px 12px;font:900 16px/1 Orbitron,sans-serif;letter-spacing:.08em;color:#fff;box-shadow:0 0 18px rgba(255,255,255,.08);touch-action:none;}
   .color-btn.blue{color:var(--cyan);box-shadow:0 0 20px rgba(0,255,255,.22);}
   .color-btn.pink{color:var(--magenta);box-shadow:0 0 20px rgba(255,0,255,.22);}
   .color-btn.active{transform:scale(.98);filter:brightness(1.18);border-color:rgba(255,255,255,.42);}
@@ -486,14 +486,15 @@
   function createEnemy(lane = null, yOffset = null, forcedKind = null) {
     const tierRoll = Math.random();
     let kind = forcedKind || 'round';
-    let size = 18, speed = 95 + game.wave * 6, hp = 1, scoreBase = 1300;
+    const difficultyScale = 1 + (game.wave - 1) * 0.1;
+    let size = 18, speed = (95 + game.wave * 6) * difficultyScale, hp = 1, scoreBase = 1300 + game.wave * 80;
     if (!forcedKind) {
       if (tierRoll > 0.9) kind = 'brute';
       else if (tierRoll > 0.65) kind = Math.random() > 0.5 ? 'star' : 'saucer';
       else kind = Math.random() > 0.5 ? 'round' : 'diamond';
     }
-    if (kind === 'brute') { size = 30 + Math.random() * 10; speed = 70 + game.wave * 4; hp = 3; scoreBase = 7000; }
-    else if (kind === 'star' || kind === 'saucer') { size = 22 + Math.random() * 8; speed = 108 + game.wave * 7; hp = 2; scoreBase = 2800; }
+    if (kind === 'brute') { size = 30 + Math.random() * 10; speed = (70 + game.wave * 4) * difficultyScale; hp = 3 + Math.floor((game.wave - 1) / 3); scoreBase = 7000 + game.wave * 420; }
+    else if (kind === 'star' || kind === 'saucer') { size = 22 + Math.random() * 8; speed = (108 + game.wave * 7) * difficultyScale; hp = 2 + Math.floor((game.wave - 1) / 5); scoreBase = 2800 + game.wave * 180; }
 
     const colorIndex = Math.random() > 0.5 ? 0 : 1;
     const laneIndex = lane == null ? Math.floor(Math.random() * LANES) : Math.max(0, Math.min(LANES - 1, lane));
@@ -552,7 +553,7 @@
   function spawnBoss() {
     const typeIndex = (game.wave - 1) % BOSS_TYPES.length;
     const bossType = BOSS_TYPES[typeIndex];
-    const hpBase = 35 + game.wave * 10;
+    const hpBase = 40 + game.wave * 13;
     game.boss = {
       x: w / 2, y: -80, targetY: 90,
       hp: hpBase, maxHp: hpBase,
@@ -592,7 +593,7 @@
     game.comboTimer = 3.5;
     game.energy = MAX_ENERGY;
     game.wave += 1;
-    game.waveEnemiesLeft = 10 + game.wave * 2;
+    game.waveEnemiesLeft = 12 + game.wave * 3;
     game.waveBossCleared = false;
     game.enemies = [];
     game.enemyBullets = [];
@@ -1033,7 +1034,7 @@
 
     if (game.pulseCooldown > 0) game.pulseCooldown = Math.max(0, game.pulseCooldown - dt);
 
-    const spawnRate = Math.max(0.38, 1.1 - game.wave * 0.05);
+    const spawnRate = Math.max(0.26, 1.05 - game.wave * 0.06);
     game.spawnTimer -= dt;
     if (game.spawnTimer <= 0 && !game.boss && game.waveEnemiesLeft > 0) {
       spawnWaveChunk();
@@ -1649,16 +1650,19 @@
 
   function onPointerDown(e) {
     if (game.state !== 'play') return;
+    if (game.activePointerId !== null && e.pointerId !== game.activePointerId) return;
+    e.preventDefault();
     game.pointerDown = true;
     game.holdArmed = false;
     game.autoFire = game.holdDelay;
     game.activePointerId = e.pointerId;
-    canvas.setPointerCapture?.(e.pointerId);
+    try { canvas.setPointerCapture?.(e.pointerId); } catch (_) {}
   }
 
   function onPointerUp(e) {
     if (game.state !== 'play') return;
     if (game.activePointerId !== null && e.pointerId !== game.activePointerId) return;
+    e.preventDefault?.();
     const wasHold = game.holdArmed;
     game.pointerDown = false;
     game.holdArmed = false;
@@ -1683,11 +1687,15 @@
     game.lastTapAt = 0;
   }
 
-  canvas.addEventListener('pointerdown', onPointerDown, { passive: true });
-  canvas.addEventListener('pointerup', onPointerUp, { passive: true });
-  canvas.addEventListener('pointercancel', onPointerCancel, { passive: true });
+  canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
+  canvas.addEventListener('pointerup', onPointerUp, { passive: false });
+  canvas.addEventListener('pointercancel', onPointerCancel, { passive: false });
+  canvas.addEventListener('lostpointercapture', cancelPointer);
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  window.addEventListener('pointerup', onPointerUp, { passive: false });
+  window.addEventListener('pointercancel', onPointerCancel, { passive: false });
   window.addEventListener('blur', cancelPointer);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) cancelPointer(); });
 
   function wireColorButton(btn, phase) {
     const handler = (e) => {
